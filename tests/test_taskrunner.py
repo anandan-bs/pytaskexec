@@ -2,7 +2,7 @@
 import unittest
 import concurrent.futures
 import time
-from pytaskexec import TaskRunner, taskify
+from pytaskexec import TaskRunner, wrap_as_task, taskify
 
 
 @taskify
@@ -16,7 +16,7 @@ def sample_task(sec, raise_error=False):
 
 class TestTaskRunner(unittest.TestCase):
     """Tests for TaskRunner implementation.
-    
+
     Tests cover task scheduling, cancellation, error handling,
     timeout behavior, and task management functionality.
     """
@@ -69,7 +69,7 @@ class TestTaskRunner(unittest.TestCase):
         """Test blocking on specific task IDs."""
         with TaskRunner() as runner:
             tid1 = runner.schedule(sample_task(1))
-            tid2 = runner.schedule(sample_task(3))
+            tid2 = runner.schedule(sample_task(5))
             # Block only for tid1
             runner.block(taskids=[tid1])
             # tid1 should be done, tid2 should still be running
@@ -80,18 +80,20 @@ class TestTaskRunner(unittest.TestCase):
         """Test cancelling all pending tasks."""
         with TaskRunner(max_workers=1) as runner:
             # Schedule more tasks than workers
-            tid1 = runner.schedule(sample_task(2))  # This will start immediately
+            # This will start immediately
+            tid1 = runner.schedule(sample_task(3))
             tid2 = runner.schedule(sample_task(1))  # This will be pending
             tid3 = runner.schedule(sample_task(1))  # This will be pending
-            
+
             # Cancel all pending tasks
             runner.cancel_pending()
-            
+            pending_ids = runner.get_pending_ids()
+
             # First task should still be running
-            self.assertIn(tid1, runner.get_pending_ids())
+            self.assertIn(tid1, pending_ids)
             # Other tasks should be cancelled
-            self.assertNotIn(tid2, runner.get_pending_ids())
-            self.assertNotIn(tid3, runner.get_pending_ids())
+            self.assertNotIn(tid2, pending_ids)
+            self.assertNotIn(tid3, pending_ids)
 
     def test_wrap_as_task(self):
         """Test wrap_as_task function."""
@@ -109,7 +111,3 @@ class TestTaskRunner(unittest.TestCase):
         with TaskRunner() as runner:
             tid = runner.schedule(task2)
             self.assertEqual(runner.get_result(tid), 4)
-
-
-if __name__ == "__main__":
-    unittest.main()

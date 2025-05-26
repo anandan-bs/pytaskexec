@@ -24,7 +24,6 @@ Version: 0.1.0
 """
 
 import concurrent.futures
-import time
 import functools
 import logging
 import os
@@ -54,17 +53,17 @@ def wrap_as_task(target, *args, **kwargs):
 
 def taskify(fn):
     """Decorator to convert a function into a Task.
-    
+
     This decorator transforms a regular function into a Task object that can be
     scheduled with TaskRunner. When the decorated function is called, it returns
     a Task instance instead of executing immediately.
-    
+
     Args:
         fn (callable): The function to be converted into a Task
-        
+
     Returns:
         callable: A wrapped function that returns a Task instance
-        
+
     Example:
         >>> @taskify
         ... def my_function(x):
@@ -100,6 +99,7 @@ class Task(object):
         self.args = args
         self.kwargs = kwargs
 
+
 class TaskRunner(concurrent.futures.ThreadPoolExecutor):
     """Task runner with exception handling and logging.
 
@@ -122,15 +122,18 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
 
         self.name = name
         try:
-            super(TaskRunner, self).__init__(max_workers=max_workers, thread_name_prefix=name)
+            super(TaskRunner, self).__init__(
+                max_workers=max_workers, thread_name_prefix=name)
             self.logger = logging.getLogger(name)
             self.logger.setLevel(DEFAULT_LOG_LEVEL)
             self._id = 1
             self.future_to_taskid = dict()
-            self.logger.info(f'Task runner {name} initialized with {max_workers} workers')
+            self.logger.info(
+                f'Task runner {name} initialized with {max_workers} workers')
         except Exception as e:
             self.logger.error(f'Failed to initialize TaskRunner: {str(e)}')
-            raise TaskRunnerError(f'TaskRunner initialization failed: {str(e)}')
+            raise TaskRunnerError(
+                f'TaskRunner initialization failed: {str(e)}')
 
     def schedule(self, task):
         """Schedule any task.
@@ -150,7 +153,8 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
 
         try:
             self._id += 1
-            self.future_to_taskid[self._id] = super(TaskRunner, self).submit(task.fn, *task.args, **task.kwargs)
+            self.future_to_taskid[self._id] = super(
+                TaskRunner, self).submit(task.fn, *task.args, **task.kwargs)
             self.logger.debug(f'Scheduled task {task.name} with ID {self._id}')
             return self._id
         except Exception as e:
@@ -183,7 +187,8 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
                 fs = list(self.future_to_taskid.values())
                 self.logger.debug('Waiting for all pending tasks')
 
-            concurrent.futures.wait(fs, timeout=timeout, return_when=return_when)
+            concurrent.futures.wait(
+                fs, timeout=timeout, return_when=return_when)
             self.logger.info('Task wait completed')
         except Exception as e:
             if not isinstance(e, TaskNotFoundError):
@@ -218,12 +223,14 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
             self.logger.debug(f'Task {taskid} completed successfully')
             return result
         except concurrent.futures.TimeoutError:
-            self.logger.warning(f'Task {taskid} result retrieval timed out after {timeout} seconds')
+            self.logger.warning(
+                f'Task {taskid} result retrieval timed out after {timeout} seconds')
             raise
         except Exception as e:
             if isinstance(e, TaskNotFoundError):
                 raise
-            self.logger.error(f'Error getting result for task {taskid}: {str(e)}')
+            self.logger.error(
+                f'Error getting result for task {taskid}: {str(e)}')
             raise
 
     def cancel_task(self, tid):
@@ -247,7 +254,8 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
             if result:
                 self.logger.info(f'Task {tid} cancelled successfully')
             else:
-                self.logger.warning(f'Failed to cancel task {tid} (may be running or completed)')
+                self.logger.warning(
+                    f'Failed to cancel task {tid} (may be running or completed)')
             return result
         except Exception as e:
             if isinstance(e, TaskNotFoundError):
@@ -256,7 +264,7 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
             raise TaskRunnerError(f'Cancel operation failed: {str(e)}')
 
     def get_pending_ids(self):
-        """Get all pending task ids.
+        """Get IDs of pending tasks.
 
         Returns:
             list: List of task IDs that are still pending
@@ -266,18 +274,16 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
         """
         self.logger.debug('Checking for pending tasks')
         try:
-            pending_task_ids = list(self.future_to_taskid.keys())
-            fs = list(self.future_to_taskid.values())
-            try:
-                for future in concurrent.futures.wait(fs):
-                    for task_id, future1 in self.future_to_taskid.items():
-                        if future1 == future:
-                            pending_task_ids.remove(task_id)
-                self.logger.debug(f'Found {len(pending_task_ids)} pending tasks')
-                return pending_task_ids
-            except Exception as e:
-                self.logger.error(f'Error checking task status: {str(e)}')
-                raise TaskRunnerError(f'Failed to check pending tasks: {str(e)}')
+            futures = list(self.future_to_taskid.values())
+            if not futures:
+                return []
+            pending_ids = []
+            for tid, fs in self.future_to_taskid.items():
+                if not fs.done():
+                    pending_ids.append(tid)
+            self.logger.debug(f'Found {len(pending_ids)} pending tasks')
+            return pending_ids
+
         except Exception as e:
             self.logger.error(f'Error getting pending task IDs: {str(e)}')
             raise TaskRunnerError(f'Failed to get pending task IDs: {str(e)}')
