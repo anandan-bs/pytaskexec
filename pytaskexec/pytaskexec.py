@@ -27,6 +27,8 @@ import concurrent.futures
 import functools
 import logging
 import os
+import itertools
+import threading
 
 from .exceptions import TaskRunnerError, TaskNotFoundError, TaskSchedulingError
 
@@ -126,7 +128,8 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
                 max_workers=max_workers, thread_name_prefix=name)
             self.logger = logging.getLogger(name)
             self.logger.setLevel(DEFAULT_LOG_LEVEL)
-            self._id = 1
+            self._id_counter = itertools.count(1)
+            self._id_lock = threading.Lock()
             self.future_to_taskid = dict()
             self.logger.info(
                 f'Task runner {name} initialized with {max_workers} workers')
@@ -152,11 +155,12 @@ class TaskRunner(concurrent.futures.ThreadPoolExecutor):
             raise ValueError("Invalid task object")
 
         try:
-            self._id += 1
-            self.future_to_taskid[self._id] = super(
-                TaskRunner, self).submit(task.fn, *task.args, **task.kwargs)
-            self.logger.debug(f'Scheduled task {task.name} with ID {self._id}')
-            return self._id
+            with self._id_lock:
+                task_id = next(self._id_counter)
+                self.future_to_taskid[task_id] = super(
+                    TaskRunner, self).submit(task.fn, *task.args, **task.kwargs)
+            self.logger.debug(f'Scheduled task {task.name} with ID {task_id}')
+            return task_id
         except Exception as e:
             self.logger.error(f'Failed to schedule task {task.name}: {str(e)}')
             raise TaskSchedulingError(f'Failed to schedule task: {str(e)}')
